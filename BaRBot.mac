@@ -1,0 +1,275 @@
+#Turbo 		80
+#include	MQ2Cast2.inc
+#Chat		Tell
+#Event		Hail	"#1# says, 'Hail, |${Me.Name}|'"
+#Event		Hail	"#1# says, in #2#, 'Hail, |${Me.Name}|'"
+
+Sub Main(bool StartupAnnounce)
+	/declare	PCIniFile 				string	outer 	BaRBot.ini
+	/declare	SpellInternalKeyMatch 	bool	outer	FALSE
+	/declare	i						int		outer
+	/declare 	medTill 				int 	outer 	98
+	/declare	runCheck 				bool	outer	FALSE
+	/call LoadIni
+	/call LogIt Starting
+	/memspellset ${SpellSet}
+	/if ( !${Me.Sitting} ) /sit
+	/afk off
+	/if ( ${StartupClearWindows} ) {
+		/mqclear
+		/clear
+	}
+	/echo Starting BaRBot by Blasty at redguides.com
+	/doevents flush
+	/while ( TRUE ) {
+		/if ( ${Window[TradeWnd].Open} ) /call Trade
+		/doevents
+		/delay 10
+	}
+/return
+
+Sub CastIt(string PCTarget, string Command)
+	/target id ${Spawn[PC ${PCTarget}].ID}
+	/delay 2s ${Target.ID}
+	/if ( ${Target.ID} ==  ${Me.ID}) /return
+	/if ( !${Target.ID} ) {
+		/call PCChat ${PCTarget} "Sorry, I can't target you"
+		/call LogIt "Error Lost Target ${PCTarget}"
+		/return
+	} else {
+		/if ( ${Me.PctMana} < ${medTill} ) {
+			/if ( !${Me.Sitting} ) /sit
+			/call PCChat ${PCTarget} "Please wait while I med to full (Current at ${Me.PctMana}% mana)..."
+			/call PCChat ${PCTarget} "Buffing will continue in a few!"
+			:med
+			/if (${Me.PctMana} < ${medTill}) {
+				/delay 100
+				/call PCChat ${PCTarget} "${Me.PctMana}%"
+				/goto :med
+			}
+		}
+		/call PCChat ${PCTarget} "Processing ${Command}..."
+	}
+	/for i 1 to ${SpellTotal}
+		/if ( ${Window[TradeWnd].Open} ) /notify TradeWnd TRDW_Cancel_Button leftmouseup
+		/if ( !${SpellSkip${i}} && ${Select[${Command},${SpellInternalKey${i}}]} ) {
+			/if ( ${SpellRaidBuff${i}} == FALSE && ${Select[${Command},raid]}==1 ) {
+				/echo "Raid buffs disabled"
+				/goto :end
+			}
+			/if ( ${SpellRaidBuff${i}} == TRUE && ${Select[${Command},raid]}==1 ) {
+				:wait
+				/if (!${Me.AltAbilityReady[Tranquil Blessings]}) {
+					/if ( !${Me.Sitting} ) /sit
+					/delay 20
+					/goto :wait
+				}			
+				/alt act 992
+				/delay 10
+			}
+			/varset SpellInternalKeyMatch TRUE
+			/call Cast ${SpellID${i}} ${SpellType${i}} 75 3 NULL
+			/if ( ${Macro.Return.Equal[CAST_SUCCESS]} ) {
+				/call LogIt "Buffed ${Target.CleanName} - ${SpellName${i}} - ${SpellID${i}}"
+			} else {
+				/if ( ${Macro.Return.Equal[CAST_NOREAGENT]} ) {
+					/call PCChat ${PCTarget} "Sorry, I need more ${Reagents.Arg[${Math.Calc[${Select${Spell[${SpellName${i}}].ReagentID[1]},${Reagents},,]}+2]},,]}s to cast ${SpellName${i}}. Please get me some and give it to me in a trade window"
+					/call LogIt "Error ${Target.CleanName} - Need ${Reagents.Arg[${Math.Calc[${Select[${Spell[${SpellID}].ReagentsID[1]},${Reagents},,]}+2]},,]}s for ${SpellName${i}} - ${Macro.Return}"
+				} else {
+					/if ( ${Macro.Return.Equal[CAST_TARGETLOWLVL]} ) {
+						/call PCChat ${PCTarget} "Sorry, ${SpellName${i}} is too high level for you"
+						/call LogIt "Error ${Target.CleanName} ${Target.Level} - ${SpellName${i}} ${SpellID${i}} too high level - ${Macro.Return}"
+					} else {
+						/call LogIt "Error ${Target.CleanName} - Buff ${SpellName${i}} - ${Macro.Return}"
+					}
+				}
+			}
+		}
+	:end
+	/next i
+	/if ( ${SpellInternalKeyMatch} ) {
+			/call PCChat ${PCTarget} "Finished"
+			/if ( !${Me.Sitting} ) /sit
+			/varset SpellInternalKeyMatch FALSE
+	} else {
+		/call PCChat ${PCTarget} "Did you know that Blasty.... Ehm what?"
+		/call LogIt "Junk from ${PCTarget} - [${Command}]"
+	}
+	/doevents flush
+/return
+
+Sub Trade
+	/if ( ${BuffGuildOnly} && ${Spawn[PC $Spawn[${Window[TradeWnd].Child[TRDW_HisName].Text}].Guild.NotEqual[${Me.Guild}]} ) {
+		/notify TradeWnd TRDW_Cancel_Button leftmouseup
+		/return
+	}
+	/delay 20s ${Window[TradeWnd].HisTradeReady}
+	/if ( ${Window[TradeWnd].HisTradeReady} ) {
+		/for i 8 to 15
+			/if ( ${Window[TradeWnd].Child[TRDW_TradeSlot${i}].Tooltip.Length} && !${Select[${Window[TradeWnd].Child[TRDW_TradeSlot${i}].Tooltip},${AcceptedItems}]} ) {
+				/call PCChat ${Target.CleanName} "Sorry, I don't accept ${Window[TradeWnd].Child[TRDW_TradeSlot${i}].Tooltip}s"
+				/notify TradeWnd TRDW_Cancel_Button leftmouseup
+				/return
+			}
+		/next i
+		/call PCChat ${Target.CleanName} "Thank You"
+		/notify TradeWnd TRDW_Trade_Button leftmouseup
+		/delay 2s !${Window[TradeWnd].Open}
+		/call LogIt "Trade from ${Target.CleanName}"
+	} else {
+		/call PCChat ${Target.CleanName} "Sorry, Trade Timed Out"
+		/notify TradeWnd TRDW_Cancel_Button leftmouseup
+		/delay 2s !${Window[TradeWnd].Open}
+		/call LogIt "Timed Out Trade from ${Target.CleanName}"
+	}
+/return
+
+Sub PCChat(string PCName, string PCMessage)
+	/t ${PCName} ${PCMessage}
+	/delay 10
+/return
+
+Sub LogIt(string LogMessage)
+	/if ( ${UseLogging} ) /mqlog ${Me.CleanName} - ${LogMessage} 
+/return
+
+Sub ListCommands(string PCTarget)
+	/call PCChat ${PCTarget} "--- MY COMMANDS ---"
+	/delay 10
+	/for i 1 to ${SpellTotal}
+		/if ( !${SpellSkip${i}} ) {
+			/call PCChat ${PCTarget} "${SpellExternalKey${i}} = ${SpellName${i}}"
+			/delay 20
+		}
+	/next i
+	/if ( ${Select[${PCTarget},${BotManagers}]} ) {
+		/call PCChat ${PCTarget} "-- B O T M A N A G E R --"
+		/delay 20
+		/call PCChat ${PCTarget} "Reload = Reload the macro"
+		/delay 20
+		/call PCChat ${PCTarget} "Camp = Camp the bot"
+		/delay 20
+		/call PCChat ${PCTarget} "Stand = Make the toon /stand"
+		/delay 20
+		/call PCChat ${PCTarget} "Sit = Make the toon /sit"
+		/delay 20
+		/call PCChat ${PCTarget} "Follow = Make the toon /follow"
+		/delay 20
+	}
+	/call PCChat ${PCTarget} "--- END OF COMMANDS ---"
+/return
+
+Sub Event_Hail(string ChatLine, string HailSender)
+	/if ( ${BuffGuildOnly} && ${Spawn[PC ${HailSender}].Guild.NotEqual[${Me.Guild}]} ) {
+		/call LogIt "Ignored Hail - Non-Guild Member - ${HailSender}"
+		/return
+	}
+	/if ( ${Select[${HailSender},${IgnoredPCs}]} ) {
+		/call LogIt "Ignored Hail - IgnoredPCs list - ${HailSender}"
+		/return
+	}
+	/if ( ${runCheck}== TRUE ) {
+		/return
+	}
+	/varset runCheck TRUE
+	/call PCChat ${HailSender} "${HailResponse}"
+	/call LogIt "Hail from ${HailSender}"
+	/delay 20
+	/varset runCheck FALSE
+	/doevents flush
+/return
+
+Sub Event_Chat(string ChatType, string ChatSender, string ChatText)
+	/if ( ${ChatText.Find[A.F.K.]} || ${ChatText.Find[AFK]} ) {
+		/call LogIt "Ignored AFK - ${ChatSender} - [${ChatText.Right[-1]}]"
+		/return
+	}
+	/if ( ${BuffGuildOnly} && ${Spawn[PC ${ChatSender}].Guild.NotEqual[${Me.Guild}]} ) {
+		/call LogIt "Ignored /tell - Non-Guild Member - ${ChatSender} - [${ChatText.Right[-1]}]"
+		/return
+	}
+	/if ( ${Select[${ChatSender},${IgnoredPCs}]}) {
+		/call LogIt "Ignored /tell - IgnoredPCs list - ${ChatSender} - [${ChatText.Right[-1]}]"
+		/return
+	}
+	/if ( !${Spawn[PC ${ChatSender}].LineOfSight} ) {
+		/call LogIt "Ignored /tell - No LOS - ${ChatSender} - [${ChatText.Right[-1]}]"
+		/return
+	}
+	/if ( ${Select[${ChatSender},${BotManagers}]} ) {
+			/if ( ${ChatText.Find[Camp]} ) {
+				/camp
+				/return
+			}
+			/if ( ${ChatText.Find[Reload]} ) {
+				/mac BaRBot
+				/return
+			}
+			/if ( ${ChatText.Find[Stand]} ) {
+				/stand
+				/return
+			}
+			/if ( ${ChatText.Find[Sit]} ) {
+				/sit
+				/return
+			}
+			/if ( ${ChatText.Find[Follow]} ) {
+				/follow
+				/return
+			}
+			/if ( ${ChatText.Find[PauseBot]} ) {
+				/varset runCheck TRUE
+				/return
+			}
+			/if ( ${ChatText.Find[unPauseBot]} ) {
+				/varset runCheck FALSE
+				/return
+			}
+	}
+	/if ( ${runCheck}== TRUE ) {
+		/return
+	}
+	/varset runCheck TRUE
+	/if ( ${ChatText.Find[list]} && !${ChatText.Find[Buffs]} ) {
+		/call LogIt "List request from ${ChatSender}"
+		/call ListCommands ${ChatSender}
+		/varset runCheck FALSE
+		/return
+	}
+	/call LogIt "Command from ${ChatSender} - [${ChatText.Right[-1]}]"
+	/call CastIt ${ChatSender} ${ChatText.Right[-1]}
+	/varset runCheck FALSE
+/return
+
+Sub LoadIni
+	/call DeclareIniVar	PCIniFile SpellSet							string		General
+	/call DeclareIniVar	PCIniFile BuffGuildOnly						bool		General
+	/call DeclareIniVar	PCIniFile StartupClearWindows				bool		General
+	/call DeclareIniVar	PCIniFile UseLogging						bool		General
+	/call DeclareIniVar	PCIniFile Reagents							string		General
+	/call DeclareIniVar	PCIniFile IgnoredPCs						string		General
+	/call DeclareIniVar	PCIniFile BotManagers						string		General
+	/call DeclareIniVar	PCIniFile	HailResponse					string		${Me.Class}
+	/call DeclareIniVar	PCIniFile	AcceptedItems					string		${Me.Class}	
+	/call DeclareIniVar	PCIniFile SpellTotal						int			${Me.Class}
+	/for i 1 to ${SpellTotal}
+		/call DeclareIniVar	PCIniFile SpellName${i}					string		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellID${i}					int			${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellType${i}					string		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellInternalKey${i}			string		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellExternalKey${i}			string		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellRaidBuff${i}				bool		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellSkip${i}					string		${Me.Class}
+	/next i
+/return
+
+Sub DeclareIniVar(string IniFile, string VarName, string VarType, string SectionName, string VarValue, string Alias) 
+   /if ( !${Defined[${VarName}]} ) /declare ${VarName} ${VarType} outer
+   /declare TempString string local ${Ini["${${IniFile}}",${SectionName},${VarName},NOTFOUND]}
+   /if ( ${TempString.Equal[NOTFOUND]} ) { 
+      /varset ${VarName} ${VarValue} 
+      /ini "${${IniFile}}" "${SectionName}" "${VarName}" "${${VarName}}" 
+   } else { 
+      /varset ${VarName} ${TempString} 
+   }
+/return
