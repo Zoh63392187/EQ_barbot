@@ -1,10 +1,17 @@
+|**
+	Buff and Raid bot v1.0 Original Author: Blasty
+	Maintained for RedGuides by Blasty 2021-03-20
+	This macro was written exclusively for subscribers of Redguides.com
+	Purpose: A bot that can do buffs and raid buffs.
+	Feature: Whitelisting, Blacklisting, Guildies only, Only private tells, Bot managers, Spellsets, Botlogs and Spam protection
+	Recommended: Use a private location for this macro such as a private guild lobby
+**| 
 #Turbo 		80
-#include	MQ2Cast2.inc
 #Chat		Tell
 #Event		Hail	"#1# says, 'Hail, |${Me.Name}|'"
 #Event		Hail	"#1# says, in #2#, 'Hail, |${Me.Name}|'"
 
-Sub Main(bool StartupAnnounce)
+Sub Main
 	/declare	PCIniFile 				string	outer 	BaRBot.ini
 	/declare	SpellInternalKeyMatch 	bool	outer	FALSE
 	/declare	i						int		outer
@@ -14,12 +21,16 @@ Sub Main(bool StartupAnnounce)
 	/call LogIt Starting
 	/memspellset ${SpellSet}
 	/if ( !${Me.Sitting} ) /sit
-	/afk off
+	/if (${Me.AFK}) {
+		/echo Turning afk off
+		/afk off
+	}
 	/if ( ${StartupClearWindows} ) {
 		/mqclear
 		/clear
 	}
 	/echo Starting BaRBot by Blasty at redguides.com
+	/if ( ${UseWhitelist} ) /echo Running with whitelisting
 	/doevents flush
 	/while ( TRUE ) {
 		/if ( ${Window[TradeWnd].Open} ) /call Trade
@@ -67,21 +78,19 @@ Sub CastIt(string PCTarget, string Command)
 				/alt act 992
 				/delay 10
 			}
-			/varset SpellInternalKeyMatch TRUE
-			/call Cast ${SpellID${i}} ${SpellType${i}} 75 3 NULL
+			/varset SpellInternalKeyMatch TRUE	
+			/casting "${SpellID${i}}" ${SpellType${i}}
+			/while (${Cast.Status.Find[C]}) {
+				/delay 5
+			}
 			/if ( ${Macro.Return.Equal[CAST_SUCCESS]} ) {
 				/call LogIt "Buffed ${Target.CleanName} - ${SpellName${i}} - ${SpellID${i}}"
 			} else {
-				/if ( ${Macro.Return.Equal[CAST_NOREAGENT]} ) {
+				/if ( ${Spell[${SpellName${i}}].ReagentID[1]} > 0 && ${FindItemCount[${Spell[${SpellName${i}}].ReagentID[1]}]} < ${Spell[${SpellName${i}}].ReagentCount[1]} ) {
 					/call PCChat ${PCTarget} "Sorry, I need more ${Reagents.Arg[${Math.Calc[${Select${Spell[${SpellName${i}}].ReagentID[1]},${Reagents},,]}+2]},,]}s to cast ${SpellName${i}}. Please get me some and give it to me in a trade window"
 					/call LogIt "Error ${Target.CleanName} - Need ${Reagents.Arg[${Math.Calc[${Select[${Spell[${SpellID}].ReagentsID[1]},${Reagents},,]}+2]},,]}s for ${SpellName${i}} - ${Macro.Return}"
 				} else {
-					/if ( ${Macro.Return.Equal[CAST_TARGETLOWLVL]} ) {
-						/call PCChat ${PCTarget} "Sorry, ${SpellName${i}} is too high level for you"
-						/call LogIt "Error ${Target.CleanName} ${Target.Level} - ${SpellName${i}} ${SpellID${i}} too high level - ${Macro.Return}"
-					} else {
-						/call LogIt "Error ${Target.CleanName} - Buff ${SpellName${i}} - ${Macro.Return}"
-					}
+					/call LogIt "Error ${Target.CleanName} - Buff ${SpellName${i}} - ${Macro.Return}"					
 				}
 			}
 		}
@@ -124,18 +133,10 @@ Sub Trade
 	}
 /return
 
-Sub PCChat(string PCName, string PCMessage)
-	/t ${PCName} ${PCMessage}
-	/delay 10
-/return
-
-Sub LogIt(string LogMessage)
-	/if ( ${UseLogging} ) /mqlog ${Me.CleanName} - ${LogMessage} 
-/return
-
 Sub ListCommands(string PCTarget)
 	/call PCChat ${PCTarget} "--- MY COMMANDS ---"
 	/delay 10
+	/echo ${SpellTotal}
 	/for i 1 to ${SpellTotal}
 		/if ( !${SpellSkip${i}} ) {
 			/call PCChat ${PCTarget} "${SpellExternalKey${i}} = ${SpellName${i}}"
@@ -143,11 +144,13 @@ Sub ListCommands(string PCTarget)
 		}
 	/next i
 	/if ( ${Select[${PCTarget},${BotManagers}]} ) {
-		/call PCChat ${PCTarget} "-- B O T M A N A G E R --"
+		/call PCChat ${PCTarget} "-- B O T M A N A G E R S --"
 		/delay 20
 		/call PCChat ${PCTarget} "Reload = Reload the macro"
 		/delay 20
 		/call PCChat ${PCTarget} "Camp = Camp the bot"
+		/delay 20
+		/call PCChat ${PCTarget} "Exit = Exit Everquest"
 		/delay 20
 		/call PCChat ${PCTarget} "Stand = Make the toon /stand"
 		/delay 20
@@ -164,8 +167,8 @@ Sub Event_Hail(string ChatLine, string HailSender)
 		/call LogIt "Ignored Hail - Non-Guild Member - ${HailSender}"
 		/return
 	}
-	/if ( ${Select[${HailSender},${IgnoredPCs}]} ) {
-		/call LogIt "Ignored Hail - IgnoredPCs list - ${HailSender}"
+	/if ( ${Select[${HailSender},${BlacklistPCs}]} ) {
+		/call LogIt "Blacklisted Hail - BlacklistPCs list - ${HailSender}"
 		/return
 	}
 	/if ( ${runCheck}== TRUE ) {
@@ -188,8 +191,8 @@ Sub Event_Chat(string ChatType, string ChatSender, string ChatText)
 		/call LogIt "Ignored /tell - Non-Guild Member - ${ChatSender} - [${ChatText.Right[-1]}]"
 		/return
 	}
-	/if ( ${Select[${ChatSender},${IgnoredPCs}]}) {
-		/call LogIt "Ignored /tell - IgnoredPCs list - ${ChatSender} - [${ChatText.Right[-1]}]"
+	/if ( ${Select[${ChatSender},${BlacklistPCs}]}) {
+		/call LogIt "Ignored /tell - BlacklistPCs list - ${ChatSender} - [${ChatText.Right[-1]}]"
 		/return
 	}
 	/if ( !${Spawn[PC ${ChatSender}].LineOfSight} ) {
@@ -197,40 +200,63 @@ Sub Event_Chat(string ChatType, string ChatSender, string ChatText)
 		/return
 	}
 	/if ( ${Select[${ChatSender},${BotManagers}]} ) {
+			/if ( ${ChatText.Find[Exit]} ) {
+				/call LogIt "${ChatSender} executed Exit command"
+				/exit
+				/return
+			}
 			/if ( ${ChatText.Find[Camp]} ) {
+				/call LogIt "${ChatSender} executed Camp command"
 				/camp
 				/return
 			}
 			/if ( ${ChatText.Find[Reload]} ) {
-				/mac BaRBot
+				/call LogIt "${ChatSender} executed Reload command"
+				/doevents flush
+				/if ( !${Me.Sitting} ) /sit
 				/return
 			}
 			/if ( ${ChatText.Find[Stand]} ) {
+				/call LogIt "${ChatSender} executed Stand command"
 				/stand
 				/return
 			}
 			/if ( ${ChatText.Find[Sit]} ) {
+				/call LogIt "${ChatSender} executed Sit command"
 				/sit
 				/return
 			}
 			/if ( ${ChatText.Find[Follow]} ) {
+				/call LogIt "${ChatSender} executed Follow command"
+				/if ( !${Me.Standing} ) /stand
+				/tar ${ChatSender}
 				/follow
+				/call PCChat ${ChatSender} "Following. Make sure to 'follow' when done and also a 'Reload'"
 				/return
 			}
 			/if ( ${ChatText.Find[PauseBot]} ) {
+				/call LogIt "${ChatSender} executed PauseBot command"
 				/varset runCheck TRUE
 				/return
 			}
 			/if ( ${ChatText.Find[unPauseBot]} ) {
+				/call LogIt "${ChatSender} executed unPauseBot command"
 				/varset runCheck FALSE
 				/return
 			}
+			/if ( ${ChatText.Find[test]} ) {
+				/return
+			}
 	}
+	/if ( ${UseWhitelist} && !${Select[${ChatSender},${WhitelistPCs}]} ) {
+		/call LogIt "${ChatSender} not whitelisted"
+		/return
+	} 
 	/if ( ${runCheck}== TRUE ) {
 		/return
 	}
 	/varset runCheck TRUE
-	/if ( ${ChatText.Find[list]} && !${ChatText.Find[Buffs]} ) {
+	/if ( ${ChatText.Find[list]} && ${ChatText.Length} == 5) {	
 		/call LogIt "List request from ${ChatSender}"
 		/call ListCommands ${ChatSender}
 		/varset runCheck FALSE
@@ -241,25 +267,36 @@ Sub Event_Chat(string ChatType, string ChatSender, string ChatText)
 	/varset runCheck FALSE
 /return
 
+Sub PCChat(string PCName, string PCMessage)
+	/t ${PCName} ${PCMessage}
+	/delay 10
+/return
+
+Sub LogIt(string LogMessage)
+	/if ( ${UseLogging} ) /mqlog ${Me.CleanName} - ${LogMessage} 
+/return
+
 Sub LoadIni
-	/call DeclareIniVar	PCIniFile SpellSet							string		General
-	/call DeclareIniVar	PCIniFile BuffGuildOnly						bool		General
-	/call DeclareIniVar	PCIniFile StartupClearWindows				bool		General
-	/call DeclareIniVar	PCIniFile UseLogging						bool		General
-	/call DeclareIniVar	PCIniFile Reagents							string		General
-	/call DeclareIniVar	PCIniFile IgnoredPCs						string		General
-	/call DeclareIniVar	PCIniFile BotManagers						string		General
-	/call DeclareIniVar	PCIniFile	HailResponse					string		${Me.Class}
-	/call DeclareIniVar	PCIniFile	AcceptedItems					string		${Me.Class}	
-	/call DeclareIniVar	PCIniFile SpellTotal						int			${Me.Class}
+	/call DeclareIniVar	PCIniFile 	SpellSet				string		General
+	/call DeclareIniVar	PCIniFile 	BuffGuildOnly			bool		General
+	/call DeclareIniVar	PCIniFile 	StartupClearWindows		bool		General
+	/call DeclareIniVar	PCIniFile 	UseLogging				bool		General
+	/call DeclareIniVar	PCIniFile 	Reagents				string		General
+	/call DeclareIniVar	PCIniFile 	BotManagers				string		General
+	/call DeclareIniVar	PCIniFile 	UseWhitelist			bool		General
+	/call DeclareIniVar	PCIniFile 	WhitelistPCs			string		General
+	/call DeclareIniVar	PCIniFile 	BlacklistPCs			string		General
+	/call DeclareIniVar	PCIniFile	HailResponse			string		${Me.Class}
+	/call DeclareIniVar	PCIniFile	AcceptedItems			string		${Me.Class}	
+	/call DeclareIniVar	PCIniFile 	SpellTotal				int			${Me.Class}
 	/for i 1 to ${SpellTotal}
-		/call DeclareIniVar	PCIniFile SpellName${i}					string		${Me.Class}
-		/call DeclareIniVar	PCIniFile SpellID${i}					int			${Me.Class}
-		/call DeclareIniVar	PCIniFile SpellType${i}					string		${Me.Class}
-		/call DeclareIniVar	PCIniFile SpellInternalKey${i}			string		${Me.Class}
-		/call DeclareIniVar	PCIniFile SpellExternalKey${i}			string		${Me.Class}
-		/call DeclareIniVar	PCIniFile SpellRaidBuff${i}				bool		${Me.Class}
-		/call DeclareIniVar	PCIniFile SpellSkip${i}					string		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellName${i}				string		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellID${i}				int			${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellType${i}				string		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellInternalKey${i}		string		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellExternalKey${i}		string		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellRaidBuff${i}			bool		${Me.Class}
+		/call DeclareIniVar	PCIniFile SpellSkip${i}				string		${Me.Class}
 	/next i
 /return
 
