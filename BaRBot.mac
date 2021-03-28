@@ -1,6 +1,6 @@
 |**
-	Buff and Raid bot v1.0 Original Author: Blasty
-	Maintained for RedGuides by Blasty 2021-03-20
+	Buff and Raid bot v1.3 Original Author: Blasty
+	Maintained for RedGuides by Blasty 2021-03-22
 	This macro was written exclusively for subscribers of Redguides.com
 	Purpose: A bot that can do buffs and raid buffs.
 	Feature: Whitelisting, Blacklisting, Guildies only, Only private tells, Bot managers, Spellsets, Botlogs and Spam protection
@@ -34,6 +34,12 @@ Sub Main
 	/doevents flush
 	/while ( TRUE ) {
 		/if ( ${Window[TradeWnd].Open} ) /call Trade
+		/if (${CampIfOutOfFoodAndDrink} && (${FindItemCount[${Food}]} < 1 || ${FindItemCount[${Drink}]} < 1)) {
+			/echo You have ${FindItemCount[${Food}]} food and ${FindItemCount[${Drink}]} water - Camping!
+			/camp
+			/call LogIt "Out of food or water - Camping ${PCTarget}"
+			/end
+		}
 		/doevents
 		/delay 10
 	}
@@ -281,6 +287,9 @@ Sub LoadIni
 	/call DeclareIniVar	PCIniFile 	BuffGuildOnly			bool		General
 	/call DeclareIniVar	PCIniFile 	StartupClearWindows		bool		General
 	/call DeclareIniVar	PCIniFile 	UseLogging				bool		General
+	/call DeclareIniVar	PCIniFile 	CampIfOutOfFoodAndDrink	bool		General TRUE
+	/call DeclareIniVar	PCIniFile 	Food					string		General
+	/call DeclareIniVar	PCIniFile 	Drink					string		General
 	/call DeclareIniVar	PCIniFile 	Reagents				string		General
 	/call DeclareIniVar	PCIniFile 	BotManagers				string		General
 	/call DeclareIniVar	PCIniFile 	UseWhitelist			bool		General
